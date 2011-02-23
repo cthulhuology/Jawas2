@@ -1,0 +1,23 @@
+Jawas2: The Revengining
+
+
+Summary:
+
+Jawas is a minimalistic Web Application Server Platform.
+This project is a complete rewrite of the Jawas platform.  
+
+Goals:
+
+1.) Smaller <1k lines of code
+2.) Faster by removing everything unnecessary
+3.) Distributed support for clusters of servers
+4.) More HTTP method support: GET, PUT, POST, DELETE, etc.
+5.) Cleaner module system.
+
+Status:
+
+v0.0.1 - Basic startup & connection monitoring working 148 LOC, 73 statements.
+
+Dave Goehrig
+
+

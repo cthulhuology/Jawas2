@@ -3,6 +3,8 @@
 // © 2009,2011 David J. Goehrig
 // All Rights Reserved
 //
+// Version: 0.0.1
+//
 
 #include <stdio.h>
 #include <stdlib.h>
