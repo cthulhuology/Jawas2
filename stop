@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ps waux | grep jawasd | cut -f 7 -d" " | xargs kill -9
