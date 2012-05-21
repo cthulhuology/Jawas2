@@ -115,10 +115,14 @@ void handleSignals() {
 void monitor() {
 	sfd = tcpSocket();
 	if (!sfd) die(1,"Could not allocate socket");
-	if (reuseSocket(sfd)) die(2,"Failed to reuse socket");
-	if (bindSocket(sfd, address, htons(port))) die(3,"Failed to bind to address and port");
-	if (listen(sfd,backlog)) die(4,"Failed to listen on port");
-	if (nonblock(sfd)<0) die(5,"Failed to set nonblocking on port");
+	if (reuseSocket(sfd)) die(2,"Failed to reuse socket %d",sfd);
+	if (bindSocket(sfd, address, htons(port))) die(3,"Failed to bind to %d.%d.%d.%d:%d",
+		(htonl(address)>>24&0xff),
+		(htonl(address)>>16&0xff),
+		(htonl(address)>>8&0xff),
+		(htonl(address)&0xff),port);
+	if (listen(sfd,backlog)) die(4,"Failed to listen on port %d",port);
+	if (nonblock(sfd)<0) die(5,"Failed to set nonblocking on socket %d", sfd);
 }
 
 int setup() {
