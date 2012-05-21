@@ -141,7 +141,7 @@ int readRequest(int sock) {
 	if (done) exit(0);
 	memset(&buffer,0,4096);
 	bytes = recv(sock,&buffer,4096,0);
-	if (bytes < 0 && errno != EAGAIN) closeSocket(sock);
+	if (bytes < 0 && errno != EAGAIN) closeSocket(sock);		// Socket closed or in an errorneous condition
 	return bytes < 0 ? 0 : bytes; 
 }
 
@@ -163,7 +163,7 @@ void work(int sock) {
 void spawn(int sock) {
 	if (!sock) return;
 	if (!fork()) while (!done) work(sock);
-	close(sock); // Close parent's copy
+	close(sock);					// Close parent's copy
 }
 
 void processIncoming() {
