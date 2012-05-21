@@ -11,3 +11,6 @@ clean:
 debug:
 	gdb ./jawasd
 
+.PHONY: run
+run:
+	./jawasd -p 8888

@@ -3,17 +3,20 @@
 // © 2009,2011 David J. Goehrig
 // All Rights Reserved
 //
-// Version: 0.0.1
+// Version: 0.0.2
 //
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
 #include <sys/time.h>
 #include <sys/event.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -32,6 +35,11 @@ short port = 80;		// port to listen on
 void die(char* message, int status) {
 	fprintf(stderr,"[%d] FATAL: %s",getpid(),message);
 	exit(status);
+}
+
+void snooze(size_t s, size_t ns) {
+	struct timespec ts = { s, ns };
+	nanosleep(&ts,NULL);
 }
 
 int tcpSocket() {
@@ -70,7 +78,7 @@ int acceptSocket(int fd) {
 }
 
 void signalHandler() {
-	fprintf(stderr,"[%d] Jawasd done\n",getpid());
+	if (!done) killpg(0,SIGHUP);
 	done = 1;
 }
 
@@ -96,17 +104,40 @@ int setup() {
 	kq = kqueue();
 }
 
-void spawnClient(int sock) {
-	if (! sock) return;
-	if (!(child = fork())) {
+int readRequest(int sock) {
+	int bytes = 0;
+	do {
+		snooze(1,0);
 		fprintf(stderr,"[%d] is child\n",getpid());
 		char buffer[4096];
 		memset(&buffer,0,4096);
-		int bytes = read(sock,&buffer,4096);
-		fprintf(stderr,"[%s]\n",buffer);
-		close(sock);
-		fprintf(stderr,"[%d] is closed\n",sock);
-		exit(0);
+		bytes = recv(sock,&buffer,4096,0);
+		fprintf(stderr,"[%s] %d (%d) %d\n",buffer,bytes,errno,done);
+	} while (!done && bytes < 0 && errno == EAGAIN);
+	return bytes; 
+}
+
+void writeResponse(int sock) {
+	char* response = "HTTP/1.1 200 OK\r\n"
+	"Content-Type: text/html\r\n"
+	"Content-Length: 11\r\n"
+	"Connection: keep-alive\r\n"
+	"\r\n"
+	"Hello World";
+	write(sock,response,strlen(response));
+}
+
+void spawnClient(int sock) {
+	if (! sock) return;
+	if (!(child = fork())) {
+		while(!done) {
+			if (readRequest(sock) < 0) {
+				fprintf(stderr,"[%d] %d is closed\n",getpid(),sock);
+				close(sock);
+				exit(0);
+			}
+			writeResponse(sock);
+		}
 	}
 	close(sock); // Close parent's copy
 	fprintf(stderr,"[%d] spawned child %d\n",getpid(),child);
