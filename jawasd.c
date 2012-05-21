@@ -9,11 +9,13 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
+#include <syslog.h>
 #include <sys/time.h>
 #include <sys/event.h>
 #include <sys/mman.h>
@@ -30,11 +32,26 @@ int child = 0;			// child spawned
 int status = 0;			// response status
 int backlog = 1024;		// pending connection backlog
 int address = INADDR_ANY;	// address to bind to
-short port = 80;		// port to listen on
+short port = 8888;		// port to listen on
+int level = 0;			// log level
 
-void die(char* message, int status) {
-	fprintf(stderr,"[%d] FATAL: %s",getpid(),message);
+void die(int status, char* message, ... ) {
+	va_list args;
+	va_start(args,message);
+	vsyslog(LOG_ERR, message, args);
 	exit(status);
+}
+
+void warn(char* message,...) {
+	va_list args;
+	va_start(args,message);
+	vsyslog(LOG_WARNING, message, args);
+}
+
+void debug(char* message,...) {
+	va_list args;
+	va_start(args,message);
+	vsyslog(LOG_DEBUG, message, args);
 }
 
 void snooze(size_t s, size_t ns) {
@@ -82,6 +99,10 @@ void signalHandler() {
 	done = 1;
 }
 
+void logging() {
+	openlog("jawasd", LOG_NDELAY|LOG_PID, LOG_LOCAL7);
+}
+
 void handleSignals() {
 	signal(SIGHUP,signalHandler);	
 	signal(SIGINT,signalHandler);	
@@ -91,14 +112,15 @@ void handleSignals() {
 
 void monitor() {
 	sfd = tcpSocket();
-	if (!sfd) die("Could not allocate socket",1);
-	if (reuseSocket(sfd)) die("Failed to reuse socket",2);
-	if (bindSocket(sfd, address, htons(port))) die("Failed to bind to address and port",3);
-	if (listen(sfd,backlog)) die("Failed to listen on port",4);
-	if (nonblock(sfd)<0) die("Failed to set nonblocking on port",5);
+	if (!sfd) die(1,"Could not allocate socket");
+	if (reuseSocket(sfd)) die(2,"Failed to reuse socket");
+	if (bindSocket(sfd, address, htons(port))) die(3,"Failed to bind to address and port");
+	if (listen(sfd,backlog)) die(4,"Failed to listen on port");
+	if (nonblock(sfd)<0) die(5,"Failed to set nonblocking on port");
 }
 
 int setup() {
+	logging();
 	handleSignals();
 	monitor();
 	kq = kqueue();
@@ -108,11 +130,10 @@ int readRequest(int sock) {
 	int bytes = 0;
 	do {
 		snooze(1,0);
-		fprintf(stderr,"[%d] is child\n",getpid());
 		char buffer[4096];
 		memset(&buffer,0,4096);
 		bytes = recv(sock,&buffer,4096,0);
-		fprintf(stderr,"[%s] %d (%d) %d\n",buffer,bytes,errno,done);
+		syslog(LOG_DEBUG,"[%s] %d (%d) %d\n",buffer,bytes,errno,done);
 	} while (!done && bytes < 0 && errno == EAGAIN);
 	return bytes; 
 }
