@@ -139,7 +139,7 @@ int readRequest(int sock) {
 		char buffer[4096];
 		memset(&buffer,0,4096);
 		bytes = recv(sock,&buffer,4096,0);
-		syslog(LOG_DEBUG,"[%s] %d (%d) %d\n",buffer,bytes,errno,done);
+		debug("[%s] %d (%d) %d\n",buffer,bytes,errno,done);
 	} while (!done && bytes < 0 && errno == EAGAIN);
 	return bytes; 
 }
@@ -159,7 +159,6 @@ void spawnClient(int sock) {
 	if (!(child = fork())) {
 		while(!done) {
 			if (readRequest(sock) < 0) {
-				fprintf(stderr,"[%d] %d is closed\n",getpid(),sock);
 				close(sock);
 				exit(0);
 			}
@@ -167,7 +166,6 @@ void spawnClient(int sock) {
 		}
 	}
 	close(sock); // Close parent's copy
-	fprintf(stderr,"[%d] spawned child %d\n",getpid(),child);
 }
 
 void processIncoming() {
