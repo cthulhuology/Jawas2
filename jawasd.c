@@ -43,12 +43,14 @@ void die(int status, char* message, ... ) {
 }
 
 void warn(char* message,...) {
+	if (level > 1) return;
 	va_list args;
 	va_start(args,message);
 	vsyslog(LOG_WARNING, message, args);
 }
 
 void debug(char* message,...) {
+	if (level > 0) return;
 	va_list args;
 	va_start(args,message);
 	vsyslog(LOG_DEBUG, message, args);
@@ -175,16 +177,20 @@ void run() {
 	while (!done) processIncoming();
 }
 
+void usage(char* command) {
+	fprintf(stderr,"Usage: %s [-d] [-p port] [-a address] [-b backlog]\n",command);
+	exit(0);
+}
+
 void processArgs(int argc, char** argv) {
 	for (int i = 1; i < argc; ++i) {
-		if (!strcmp(argv[i],"-d")) detach = 1;
-		if (!strcmp(argv[i],"-p") && i < argc-1) port = (short)atoi(argv[i+1]);
-		if (!strcmp(argv[i],"-a") && i < argc-1) address = inet_addr(argv[i+1]);
-		if (!strcmp(argv[i],"-b") && i < argc-1) backlog = atoi(argv[i+1]);
-		if (!strcmp(argv[i],"-h") || !strcmp(argv[i],"-?")) {
-			fprintf(stderr,"Usage: %s [-d] [-p port] [-a address] [-b backlog]\n",argv[0]);
-			exit(0);
-		}
+		if (!strcmp(argv[i],"-d")) detach = 1;						// detach from console
+		if (!strcmp(argv[i],"-p") && i < argc-1) port = (short)atoi(argv[i+1]);		// set port
+		if (!strcmp(argv[i],"-a") && i < argc-1) address = inet_addr(argv[i+1]);	// sort eth address
+		if (!strcmp(argv[i],"-b") && i < argc-1) backlog = atoi(argv[i+1]);		// set connection backlog
+		if (!strcmp(argv[i],"-w") && i < argc) level = 1;				// log warnings and errors only
+		if (!strcmp(argv[i],"-q") && i < argc) level = 2;				// log errors only
+		if (!strcmp(argv[i],"-h") || !strcmp(argv[i],"-?")) usage(argv[0]);		// show help
 	}
 }
 
