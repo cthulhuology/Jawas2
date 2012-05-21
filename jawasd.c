@@ -31,7 +31,7 @@ short port = 80;		// port to listen on
 
 int tcpSocket() {
 	int fd = socket(AF_INET,SOCK_STREAM,0);
-	if (0>fd) return 0;
+	return  0 > fd ? 0 : fd;
 }
 
 int bindSocket(int fd, unsigned long addr, short port) {
@@ -41,7 +41,7 @@ int bindSocket(int fd, unsigned long addr, short port) {
 
 int reuseSocket(int fd) {
 	int one = 1;
-	setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));
+	return setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));
 }
 
 int timeoutSocket(int fd, int seconds) {
@@ -93,6 +93,7 @@ int setup() {
 	sfd = monitor();
 	if (!sfd) {
 		fprintf(stderr,"Failed to monitor port %d\n",port);
+		for (;;) {}
 		exit(1);
 	}
 	nonblock(sfd);
