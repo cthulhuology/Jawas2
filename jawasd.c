@@ -1,6 +1,6 @@
 // jawasd.c
 //
-// © 2009,2011 David J. Goehrig
+// © 2009,2011,2012 David J. Goehrig
 // All Rights Reserved
 //
 // Version: 0.0.2
@@ -23,6 +23,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
+
+#define IP(X)	(htonl(X)>>24&0xff),(htonl(X)>>16&0xff),(htonl(X)>>8&0xff),(htonl(X)&0xff)
 
 int kq = 0; 			// the Kqueue
 int done = 0;			// signal flag
@@ -116,11 +118,7 @@ void monitor() {
 	sfd = tcpSocket();
 	if (!sfd) die(1,"Could not allocate socket");
 	if (reuseSocket(sfd)) die(2,"Failed to reuse socket %d",sfd);
-	if (bindSocket(sfd, address, htons(port))) die(3,"Failed to bind to %d.%d.%d.%d:%d",
-		(htonl(address)>>24&0xff),
-		(htonl(address)>>16&0xff),
-		(htonl(address)>>8&0xff),
-		(htonl(address)&0xff),port);
+	if (bindSocket(sfd, address, htons(port))) die(3,"Failed to bind to %d.%d.%d.%d:%d",IP(address),port);
 	if (listen(sfd,backlog)) die(4,"Failed to listen on port %d",port);
 	if (nonblock(sfd)<0) die(5,"Failed to set nonblocking on socket %d", sfd);
 }
@@ -132,16 +130,19 @@ int setup() {
 	kq = kqueue();
 }
 
+void closeSocket(int sock) {
+	close(sock);
+	exit(0);
+}
+
 int readRequest(int sock) {
 	int bytes = 0;
-	do {
-		snooze(1,0);
-		char buffer[4096];
-		memset(&buffer,0,4096);
-		bytes = recv(sock,&buffer,4096,0);
-		debug("[%s] %d (%d) %d\n",buffer,bytes,errno,done);
-	} while (!done && bytes < 0 && errno == EAGAIN);
-	return bytes; 
+	char buffer[4096];
+	if (done) exit(0);
+	memset(&buffer,0,4096);
+	bytes = recv(sock,&buffer,4096,0);
+	if (bytes < 0 && errno != EAGAIN) closeSocket(sock);
+	return bytes < 0 ? 0 : bytes; 
 }
 
 void writeResponse(int sock) {
@@ -154,17 +155,14 @@ void writeResponse(int sock) {
 	write(sock,response,strlen(response));
 }
 
-void spawnClient(int sock) {
-	if (! sock) return;
-	if (!(child = fork())) {
-		while(!done) {
-			if (readRequest(sock) < 0) {
-				close(sock);
-				exit(0);
-			}
-			writeResponse(sock);
-		}
-	}
+void work(int sock) {
+	if (readRequest(sock) > 0) writeResponse(sock);
+	snooze(1,0);
+}
+
+void spawn(int sock) {
+	if (!sock) return;
+	if (!fork()) while (!done) work(sock);
 	close(sock); // Close parent's copy
 }
 
@@ -172,8 +170,9 @@ void processIncoming() {
 	struct timespec ts = { 1, 0 };
 	struct kevent cl = { sfd, EVFILT_READ, EV_ADD|EV_ONESHOT, 0, 0, 0 };
 	struct kevent el = { 0, 0, 0, 0, 0, 0 };
-	if (kevent(kq,&cl,1,&el,1,&ts)>0) spawnClient(acceptSocket(sfd));
+	if (kevent(kq,&cl,1,&el,1,&ts)>0) spawn(acceptSocket(sfd));
 }
+
 
 void run() {
 	setup();
