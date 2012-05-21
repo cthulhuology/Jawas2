@@ -35,7 +35,11 @@ int status = 0;			// response status
 int backlog = 1024;		// pending connection backlog
 int address = INADDR_ANY;	// address to bind to
 short port = 8888;		// port to listen on
-int level = 0;			// log level
+int level = 1;			// log level, default to warnings
+int peer = 0;			// peer's ethernet address
+int peer_port = 0;		// peer's port
+int timeout = 60;
+int linger = 60;
 
 void die(int status, char* message, ... ) {
 	va_list args;
@@ -68,6 +72,12 @@ int tcpSocket() {
 	return  0 > fd ? 0 : fd;
 }
 
+void closeSocket(int sock) {
+	debug("Closing connection from %d.%d.%d.%d:%d",IP(peer),peer_port);
+	close(sock);
+	exit(0);
+}
+
 int bindSocket(int fd, unsigned long addr, short port) {
 	struct sockaddr_in saddr = {sizeof(struct sockaddr_in),AF_INET,port,{addr},{0,0,0,0,0,0}};
 	return bind(fd,(struct sockaddr*)&saddr,sizeof(saddr));
@@ -79,9 +89,9 @@ int reuseSocket(int fd) {
 }
 
 int timeoutSocket(int fd, int seconds) {
-	struct itimerval timeout = {{0,0},{ seconds, 0}};
-	return setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(struct itimerval))
-                && setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof(struct itimerval));
+	struct itimerval interval = {{0,0},{ seconds, 0}};
+	return setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&interval,sizeof(struct itimerval))
+                && setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&interval,sizeof(struct itimerval));
 }
 
 int nonblock(int fd) {
@@ -94,7 +104,11 @@ int acceptSocket(int fd) {
         socklen_t len = sizeof(struct sockaddr_in);
         int sock = accept(fd,(struct sockaddr*)&saddr,&len);
 	if (sock < 0) return 0;
+	peer = saddr.sin_addr.s_addr;
+        peer_port = saddr.sin_port;
+	debug("Accepting connection from %d.%d.%d.%d:%d",IP(peer),peer_port);
 	nonblock(sock);
+	timeoutSocket(sock,linger);
 	return sock;
 }
 
@@ -121,6 +135,7 @@ void monitor() {
 	if (bindSocket(sfd, address, htons(port))) die(3,"Failed to bind to %d.%d.%d.%d:%d",IP(address),port);
 	if (listen(sfd,backlog)) die(4,"Failed to listen on port %d",port);
 	if (nonblock(sfd)<0) die(5,"Failed to set nonblocking on socket %d", sfd);
+	debug("Listening on %d.%d.%d.%d:%d",IP(address),port);
 }
 
 int setup() {
@@ -130,11 +145,6 @@ int setup() {
 	kq = kqueue();
 }
 
-void closeSocket(int sock) {
-	close(sock);
-	exit(0);
-}
-
 int readRequest(int sock) {
 	int bytes = 0;
 	char buffer[4096];
@@ -142,6 +152,7 @@ int readRequest(int sock) {
 	memset(&buffer,0,4096);
 	bytes = recv(sock,&buffer,4096,0);
 	if (bytes < 0 && errno != EAGAIN) closeSocket(sock);		// Socket closed or in an errorneous condition
+	if (bytes > 0) timeout = linger;				// Reset the timeout on new requests
 	return bytes < 0 ? 0 : bytes; 
 }
 
@@ -158,12 +169,19 @@ void writeResponse(int sock) {
 void work(int sock) {
 	if (readRequest(sock) > 0) writeResponse(sock);
 	snooze(1,0);
+	if (--timeout <= 0) done = 1;
+	debug("Socket %d has %ds before disconnect",sock,timeout);
+	if (done) closeSocket(sock);
+}
+
+void closeParent(int sock) {
+	close(sock);			// NB: we're closing the parent's copy not the childs!
 }
 
 void spawn(int sock) {
-	if (!sock) return;
-	if (!fork()) while (!done) work(sock);
-	close(sock);					// Close parent's copy
+	if (!sock) return;			
+	if (fork()) closeParent(sock);
+	else while (!done) work(sock);
 }
 
 void processIncoming() {
@@ -190,7 +208,8 @@ void processArgs(int argc, char** argv) {
 		if (!strcmp(argv[i],"-p") && i < argc-1) port = (short)atoi(argv[i+1]);		// set port
 		if (!strcmp(argv[i],"-a") && i < argc-1) address = inet_addr(argv[i+1]);	// sort eth address
 		if (!strcmp(argv[i],"-b") && i < argc-1) backlog = atoi(argv[i+1]);		// set connection backlog
-		if (!strcmp(argv[i],"-w") && i < argc) level = 1;				// log warnings and errors only
+		if (!strcmp(argv[i],"-l") && i < argc-1) linger = atoi(argv[i+1]);		// time to let a socket linger between requests 
+		if (!strcmp(argv[i],"-v") && i < argc) level = 0;				// log warnings and errors only
 		if (!strcmp(argv[i],"-q") && i < argc) level = 2;				// log errors only
 		if (!strcmp(argv[i],"-h") || !strcmp(argv[i],"-?")) usage(argv[0]);		// show help
 	}
