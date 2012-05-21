@@ -29,6 +29,11 @@ int backlog = 1024;		// pending connection backlog
 int address = INADDR_ANY;	// address to bind to
 short port = 80;		// port to listen on
 
+void die(char* message, int status) {
+	fprintf(stderr,"[%d] FATAL: %s",getpid(),message);
+	exit(status);
+}
+
 int tcpSocket() {
 	int fd = socket(AF_INET,SOCK_STREAM,0);
 	return  0 > fd ? 0 : fd;
@@ -76,27 +81,18 @@ void handleSignals() {
 	signal(SIGCHLD,SIG_IGN);
 }
 
-int monitor() {
-	int fd = tcpSocket();
-	if (!fd) return 0;
-	if (reuseSocket(fd)) goto error;
-	if (bindSocket(fd, address, htons(port))) goto error;
-	if (listen(fd,backlog)) goto error;
-	return fd;
-error:
-	close(fd);
-	return 0;
+void monitor() {
+	sfd = tcpSocket();
+	if (!sfd) die("Could not allocate socket",1);
+	if (reuseSocket(sfd)) die("Failed to reuse socket",2);
+	if (bindSocket(sfd, address, htons(port))) die("Failed to bind to address and port",3);
+	if (listen(sfd,backlog)) die("Failed to listen on port",4);
+	if (nonblock(sfd)<0) die("Failed to set nonblocking on port",5);
 }
 
 int setup() {
 	handleSignals();
-	sfd = monitor();
-	if (!sfd) {
-		fprintf(stderr,"Failed to monitor port %d\n",port);
-		for (;;) {}
-		exit(1);
-	}
-	nonblock(sfd);
+	monitor();
 	kq = kqueue();
 }
 
