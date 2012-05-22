@@ -5,7 +5,7 @@ jawasd : jawasd.c
 
 .PHONY: clean
 clean:
-	rm jawasd
+	rm -rf jawasd jawasd.dSYM
 
 .PHONY: debug
 debug:
