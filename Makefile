@@ -21,4 +21,4 @@ run:
 	./jawasd -p 8888
 
 modules/%.dylib : src/%.c
-	gcc -gstabs -ggdb --std=c99 -o $@ $<
+	gcc -undefined dynamic_lookup -dynamiclib -gstabs -ggdb --std=c99 -o $@ $<

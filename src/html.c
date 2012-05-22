@@ -8,13 +8,10 @@
 #include <string.h>
 #include <unistd.h>
 
-void init() {
-	// Initialize Module here
-}
+extern void register_handler(char*,void*);
 
-int main(int argc, char** argv) {
-	init();
-	return 0;
+void init(void* self) {
+	register_handler("/html/",self);
 }
 
 void get(int sock) {

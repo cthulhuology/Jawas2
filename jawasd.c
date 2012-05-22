@@ -25,7 +25,8 @@
 #include <sys/wait.h>
 #include <arpa/inet.h>
 
-#define IP(X)	(htonl(X)>>24&0xff),(htonl(X)>>16&0xff),(htonl(X)>>8&0xff),(htonl(X)&0xff)
+#define IP(X)		(htonl(X)>>24&0xff),(htonl(X)>>16&0xff),(htonl(X)>>8&0xff),(htonl(X)&0xff)
+#define min(X,Y) 	(X < Y ? X : Y)
 
 int kq = 0; 					// the Kqueue
 int done = 0;					// signal flag
@@ -39,11 +40,17 @@ short port = 8888;				// port to listen on
 int level = 1;					// log level, default to warnings
 int peer = 0;					// peer's ethernet address
 int peer_port = 0;				// peer's port
-int timeout = 60;				// time remaining before socket closes
-int linger = 60;				// time in seconds to allow socket to linger
+int timeout = 60000;				// time remaining before socket closes
+int linger = 60000;				// time in seconds to allow socket to linger
 char* buffer = NULL;				// io buffer
 int buffer_size = 4096;				// size of io buffer
 char* module_path = "./modules";		// path to the modules directory
+struct module_struct {
+	char* path;
+	size_t path_len;
+	void* lib;
+} *module = NULL;				// module
+int modules = 0;				// number of modules
 
 void die(int status, char* message, ... ) {
 	va_list args;
@@ -147,6 +154,15 @@ void iobuffer() {
 	memset(buffer,0,buffer_size);
 }
 
+void register_handler(char* path,void* lib) {
+	module = realloc(module, sizeof(struct module_struct)*(modules+1));
+	module[modules].path = path;
+	module[modules].path_len = strlen(path);
+	module[modules].lib = lib;
+	debug("Registering %s => %p",  module[modules].path, module[modules].lib);
+	++modules;
+}
+
 void loadModule(char* module) {
 	char* module_file = NULL;
 	if (!module || module[0] == '.') return;
@@ -154,6 +170,9 @@ void loadModule(char* module) {
 	debug("Loading %s",module_file);
 	void* mod = dlopen(module_file, RTLD_LAZY |RTLD_LOCAL);
 	if (!mod) die(7,"Could not load module %s", module_file);
+	void (*init)(void*) = dlsym(mod,"init");
+	if(!init) die(8,"Module %s has no initializer", module_file);
+	init(mod);
 	free(module_file);
 }
 
@@ -184,15 +203,30 @@ int readRequest(int sock) {
 	return bytes < 0 ? 0 : bytes; 
 }
 
+void* lookup(char* path) {
+	size_t len = strlen(path);
+	for (int i = 0; i < modules; ++i) 
+		if (! strncmp(module[i].path,path,min(len,module[i].path_len)))
+			return module[i].lib;
+	return NULL;
+}
+
 void writeResponse(int sock) {
-	
+	char* method = "get";
+	char* path = "/html/";
+	debug("Looking up module for %s",path);
+	void* lib = lookup(path);
+	if (!lib) return;
+	void (*handler)(int) = dlsym(lib,method);
+	debug("Dispatching %s %s => %p %p", method, path, lib, handler);
+	if(handler) handler(sock);
 }
 
 void work(int sock) {
 	if (readRequest(sock) > 0) writeResponse(sock);
-	snooze(1,0);
+	snooze(0,1000000);						// sleep for 1 milisecond
 	if (--timeout <= 0) done = 1;
-	debug("Socket %d has %ds before disconnect",sock,timeout);
+	if (timeout%1000 == 0) debug("Socket %d has %ds before disconnect",sock,timeout/1000);
 	if (done) closeSocket(sock);
 }
 
@@ -229,7 +263,7 @@ void usage(char* command) {
 		"	-p port		port to listen on\n"
 		"	-a address	address to listen on\n"
 		"	-b backlog	socket backlog for incoming connections\n"
-		"	-l linger	time in seconds to wait before dropping a connection\n"
+		"	-l linger	time in miliseconds to wait before dropping a connection\n"
 		"\n",
 		command);
 	exit(0);
