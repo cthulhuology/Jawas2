@@ -254,5 +254,6 @@ int main(int argc, char** argv) {
 	processArgs(argc,argv);
 	if (detach) child = fork();
 	if (!child) run();		// We are the child if we don't have a child so run
+	debug("Shutting down");
 	return 0;
 }
