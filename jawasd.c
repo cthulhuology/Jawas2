@@ -215,6 +215,7 @@ void usage(char* command) {
 
 void processArgs(int argc, char** argv) {
 	for (int i = 1; i < argc; ++i) {
+		if (!strcmp(argv[i],"-h") || !strcmp(argv[i],"-?")) usage(argv[0]);		// show help
 		if (!strcmp(argv[i],"-d")) detach = 1;						// detach from console
 		if (!strcmp(argv[i],"-p") && i < argc-1) port = (short)atoi(argv[i+1]);		// set port
 		if (!strcmp(argv[i],"-a") && i < argc-1) address = inet_addr(argv[i+1]);	// sort eth address
@@ -222,7 +223,6 @@ void processArgs(int argc, char** argv) {
 		if (!strcmp(argv[i],"-l") && i < argc-1) linger = atoi(argv[i+1]);		// time to let a socket linger between requests 
 		if (!strcmp(argv[i],"-v") && i < argc) level = 0;				// verbose mode
 		if (!strcmp(argv[i],"-q") && i < argc) level = 2;				// quite mode
-		if (!strcmp(argv[i],"-h") || !strcmp(argv[i],"-?")) usage(argv[0]);		// show help
 	}
 }
 
