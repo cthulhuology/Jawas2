@@ -1,11 +1,16 @@
-all : jawasd
+
+
+MODULES = $(patsubst src/%.c, modules/%.dylib, $(wildcard src/*.c))
+
+
+all : jawasd $(MODULES)
 
 jawasd : jawasd.c
-	gcc -ggdb --std=c99  -o jawasd jawasd.c
+	gcc -gstabs -ggdb --std=c99 -o jawasd jawasd.c
 
 .PHONY: clean
 clean:
-	rm -rf jawasd jawasd.dSYM
+	rm -rf jawasd jawasd.dSYM modules/*
 
 .PHONY: debug
 debug:
@@ -14,3 +19,6 @@ debug:
 .PHONY: run
 run:
 	./jawasd -p 8888
+
+modules/%.dylib : src/%.c
+	gcc -gstabs -ggdb --std=c99 -o $@ $<

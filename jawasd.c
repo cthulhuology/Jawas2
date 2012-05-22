@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -26,20 +27,23 @@
 
 #define IP(X)	(htonl(X)>>24&0xff),(htonl(X)>>16&0xff),(htonl(X)>>8&0xff),(htonl(X)&0xff)
 
-int kq = 0; 			// the Kqueue
-int done = 0;			// signal flag
-int sfd = 0;			// server fd
-int detach = 0;			// detach from foreground flag
-int child = 0;			// child spawned
-int status = 0;			// response status
-int backlog = 1024;		// pending connection backlog
-int address = INADDR_ANY;	// address to bind to
-short port = 8888;		// port to listen on
-int level = 1;			// log level, default to warnings
-int peer = 0;			// peer's ethernet address
-int peer_port = 0;		// peer's port
-int timeout = 60;
-int linger = 60;
+int kq = 0; 					// the Kqueue
+int done = 0;					// signal flag
+int sfd = 0;					// server fd
+int detach = 0;					// detach from foreground flag
+int child = 0;					// child spawned
+int status = 0;					// response status
+int backlog = 1024;				// pending connection backlog
+int address = INADDR_ANY;			// address to bind to
+short port = 8888;				// port to listen on
+int level = 1;					// log level, default to warnings
+int peer = 0;					// peer's ethernet address
+int peer_port = 0;				// peer's port
+int timeout = 60;				// time remaining before socket closes
+int linger = 60;				// time in seconds to allow socket to linger
+char* buffer = NULL;				// io buffer
+int buffer_size = 4096;				// size of io buffer
+char* module_path = "./modules";		// path to the modules directory
 
 void die(int status, char* message, ... ) {
 	va_list args;
@@ -138,32 +142,50 @@ void monitor() {
 	debug("Listening on %d.%d.%d.%d:%d",IP(address),port);
 }
 
+void iobuffer() {
+	buffer = (char*)mmap(NULL,buffer_size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);	// Use C.O.W. semantics to avoid remapping
+	memset(buffer,0,buffer_size);
+}
+
+void loadModule(char* module) {
+	char* module_file = NULL;
+	if (!module || module[0] == '.') return;
+	asprintf(&module_file,"%s/%s",module_path,module);
+	debug("Loading %s",module_file);
+	void* mod = dlopen(module_file, RTLD_LAZY |RTLD_LOCAL);
+	if (!mod) die(7,"Could not load module %s", module_file);
+	free(module_file);
+}
+
+void loadModules() {
+	struct dirent *file;
+	debug("Loading modules in %s",module_path);
+	DIR* dir = opendir(module_path);
+	if (!dir) die(6,"Failed to open module directory path %s",module_path);
+	while (file = readdir(dir)) loadModule(file->d_name);
+	closedir(dir);	
+}
+
 int setup() {
 	logging();
 	handleSignals();
 	monitor();
+	iobuffer();
+	loadModules();
 	kq = kqueue();
 }
 
 int readRequest(int sock) {
 	int bytes = 0;
-	char buffer[4096];
 	if (done) exit(0);
-	memset(&buffer,0,4096);
-	bytes = recv(sock,&buffer,4096,0);
+	bytes = recv(sock,buffer,buffer_size,0);
 	if (bytes < 0 && errno != EAGAIN) closeSocket(sock);		// Socket closed or in an errorneous condition
 	if (bytes > 0) timeout = linger;				// Reset the timeout on new requests
 	return bytes < 0 ? 0 : bytes; 
 }
 
 void writeResponse(int sock) {
-	char* response = "HTTP/1.1 200 OK\r\n"
-	"Content-Type: text/html\r\n"
-	"Content-Length: 11\r\n"
-	"Connection: keep-alive\r\n"
-	"\r\n"
-	"Hello World";
-	write(sock,response,strlen(response));
+	
 }
 
 void work(int sock) {
@@ -217,9 +239,11 @@ void processArgs(int argc, char** argv) {
 	for (int i = 1; i < argc; ++i) {
 		if (!strcmp(argv[i],"-h") || !strcmp(argv[i],"-?")) usage(argv[0]);		// show help
 		if (!strcmp(argv[i],"-d")) detach = 1;						// detach from console
+		if (!strcmp(argv[i],"-m") && i < argc-1) module_path = argv[i+1];		// set the path to the modules directory
 		if (!strcmp(argv[i],"-p") && i < argc-1) port = (short)atoi(argv[i+1]);		// set port
 		if (!strcmp(argv[i],"-a") && i < argc-1) address = inet_addr(argv[i+1]);	// sort eth address
 		if (!strcmp(argv[i],"-b") && i < argc-1) backlog = atoi(argv[i+1]);		// set connection backlog
+		if (!strcmp(argv[i],"-B") && i < argc-1) buffer_size = atoi(argv[i+1]);		// set request buffer size
 		if (!strcmp(argv[i],"-l") && i < argc-1) linger = atoi(argv[i+1]);		// time to let a socket linger between requests 
 		if (!strcmp(argv[i],"-v") && i < argc) level = 0;				// verbose mode
 		if (!strcmp(argv[i],"-q") && i < argc) level = 2;				// quite mode
