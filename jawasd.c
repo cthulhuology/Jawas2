@@ -191,14 +191,25 @@ void processIncoming() {
 	if (kevent(kq,&cl,1,&el,1,&ts)>0) spawn(acceptSocket(sfd));
 }
 
-
 void run() {
 	setup();
 	while (!done) processIncoming();
 }
 
 void usage(char* command) {
-	fprintf(stderr,"Usage: %s [-d] [-p port] [-a address] [-b backlog]\n",command);
+	fprintf(stderr,
+		"Usage: %s [-d] [-v] [-q] [-p port] [-a address] [-b backlog] [-l linger]\n"
+		"\n"
+		"	-h -?		this message\n"
+		"	-d		run in the background\n"
+		"	-v		verbose logging\n"
+		"	-q		quite mode\n"
+		"	-p port		port to listen on\n"
+		"	-a address	address to listen on\n"
+		"	-b backlog	socket backlog for incoming connections\n"
+		"	-l linger	time in seconds to wait before dropping a connection\n"
+		"\n",
+		command);
 	exit(0);
 }
 
@@ -209,8 +220,8 @@ void processArgs(int argc, char** argv) {
 		if (!strcmp(argv[i],"-a") && i < argc-1) address = inet_addr(argv[i+1]);	// sort eth address
 		if (!strcmp(argv[i],"-b") && i < argc-1) backlog = atoi(argv[i+1]);		// set connection backlog
 		if (!strcmp(argv[i],"-l") && i < argc-1) linger = atoi(argv[i+1]);		// time to let a socket linger between requests 
-		if (!strcmp(argv[i],"-v") && i < argc) level = 0;				// log warnings and errors only
-		if (!strcmp(argv[i],"-q") && i < argc) level = 2;				// log errors only
+		if (!strcmp(argv[i],"-v") && i < argc) level = 0;				// verbose mode
+		if (!strcmp(argv[i],"-q") && i < argc) level = 2;				// quite mode
 		if (!strcmp(argv[i],"-h") || !strcmp(argv[i],"-?")) usage(argv[0]);		// show help
 	}
 }
